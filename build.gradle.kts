@@ -1,33 +1,19 @@
 import com.bmuschko.gradle.docker.tasks.image.Dockerfile
-import com.diffplug.gradle.spotless.SpotlessExtension
-import io.spring.gradle.dependencymanagement.dsl.DependencyManagementExtension
-import ru.vyarus.gradle.plugin.quality.QualityExtension
-
-buildscript {
-    repositories {
-        mavenLocal()
-        jcenter()
-        maven("https://plugins.gradle.org/m2/")
-    }
-
-    dependencies {
-        classpath("com.bmuschko:gradle-docker-plugin:5.0.0")
-        classpath("com.diffplug.spotless:spotless-plugin-gradle:3.24.2")
-        classpath("com.jfrog.bintray.gradle:gradle-bintray-plugin:1.8.4")
-        classpath("gradle.plugin.com.github.spotbugs:spotbugs-gradle-plugin:2.0.0")
-        classpath("io.spring.gradle:dependency-management-plugin:1.0.8.RELEASE")
-        classpath("net.researchgate:gradle-release:2.8.0")
-        classpath("ru.vyarus:gradle-quality-plugin:3.4.0")
-    }
-}
+import java.nio.charset.StandardCharsets.UTF_8
 
 plugins {
     java
-    id("net.researchgate.release") version "2.7.0"
+    id("com.bmuschko.docker-remote-api") version "6.7.0"
+    id("com.diffplug.spotless") version "5.12.1"
+    id("com.gorylenko.gradle-git-properties") version "2.2.4"
+    id("com.jfrog.bintray") version "1.8.5"
+    id("io.spring.dependency-management") version "1.0.11.RELEASE"
+    id("net.researchgate.release") version "2.8.1"
+    id("ru.vyarus.quality") version "4.5.0"
 }
 
 tasks.withType(Wrapper::class) {
-    gradleVersion = "5.6.1"
+    gradleVersion = "6.8.3"
 }
 
 val linkHomepage by extra("https://qameta.io/allure")
@@ -65,22 +51,22 @@ configure(subprojects) {
     apply(plugin = "java")
     apply(plugin = "maven")
     apply(plugin = "ru.vyarus.quality")
-    apply(plugin = "com.diffplug.gradle.spotless")
+    apply(plugin = "com.diffplug.spotless")
     apply(plugin = "io.spring.dependency-management")
     apply(from = "$gradleScriptDir/bintray.gradle")
     apply(from = "$gradleScriptDir/maven-publish.gradle")
 
-    configure<DependencyManagementExtension> {
+    dependencyManagement {
         imports {
-            mavenBom("com.fasterxml.jackson:jackson-bom:2.9.8")
-            mavenBom("org.junit:junit-bom:5.4.0")
+            mavenBom("com.fasterxml.jackson:jackson-bom:2.12.3")
+            mavenBom("org.junit:junit-bom:5.7.1")
         }
         dependencies {
             dependency("com.beust:jcommander:1.78")
             dependency("com.github.spotbugs:spotbugs-annotations:3.1.12")
             dependency("com.opencsv:opencsv:4.6")
             dependency("com.vladsch.flexmark:flexmark:0.50.36")
-            dependency("commons-io:commons-io:2.6")
+            dependency("commons-io:commons-io:2.8.0")
             dependency("javax.xml.bind:jaxb-api:2.3.1")
             dependency("org.allurefw:allure1-model:1.0")
             dependency("org.apache.commons:commons-lang3:3.9")
@@ -88,7 +74,7 @@ configure(subprojects) {
             dependency("org.apache.tika:tika-core:1.22")
             dependency("org.assertj:assertj-core:3.13.2")
             dependency("org.eclipse.jetty:jetty-server:9.4.20.v20190813")
-            dependency("org.freemarker:freemarker:2.3.29")
+            dependency("org.freemarker:freemarker:2.3.31")
             dependency("org.mockito:mockito-core:3.0.0")
             dependency("org.projectlombok:lombok:1.18.8")
             dependency("org.zeroturnaround:zt-zip:1.13")
@@ -186,40 +172,61 @@ configure(subprojects) {
         includeEmptyDirs = false
     }
 
-    configure<SpotlessExtension> {
+    spotless {
         java {
-            target(fileTree(rootDir) {
-                include("src/**/*.java")
-            })
+            target("src/**/*.java")
             removeUnusedImports()
-            @Suppress("INACCESSIBLE_TYPE")
-            licenseHeaderFile("$spotlessDtr/header.java", "(package|import|open|module|//startfile)")
+            importOrder("", "jakarta", "javax", "java", "\\#")
+            licenseHeader(file("$spotlessDtr/allure.java.license").readText(UTF_8))
             endWithNewline()
             replaceRegex("one blank line after package line", "(package .+;)\n+import", "$1\n\nimport")
             replaceRegex("one blank line after import lists", "(import .+;\n\n)\n+", "$1")
+            replaceRegex("no blank line between jakarta & javax", "(import jakarta.+;\n)\n+(import javax.+;\n)", "$1$2")
+            replaceRegex("no blank line between javax & java", "(import javax.+;\n)\n+(import java.+;\n)", "$1$2")
+            replaceRegex("no blank line between jakarta & java", "(import jakarta.+;\n)\n+(import java.+;\n)", "$1$2")
         }
         format("misc") {
-            target(fileTree(rootDir) {
-                include("**/*.gradle",
-                        "**/*.gitignore",
-                        "README.md",
-                        "CONTRIBUTING.md",
-                        "config/**/*.xml",
-                        "src/**/*.xml")
-            })
+            target(
+                    "*.gradle",
+                    "*.gitignore",
+                    "README.md",
+                    "CONTRIBUTING.md",
+                    "config/**/*.xml",
+                    "src/**/*.xml"
+            )
             trimTrailingWhitespace()
             endWithNewline()
         }
+
         encoding("UTF-8")
     }
 
-    configure<QualityExtension> {
-        configDir = qualityConfigsDir
+    quality {
+        configDir = "$gradleScriptDir/quality-configs"
+        excludeSources = fileTree("build/generated-sources")
         exclude("**/*.json")
-        checkstyleVersion = "8.17"
-        pmdVersion = "6.17.0"
-        spotbugsVersion = "3.1.12"
-        codenarcVersion = "1.4"
+        checkstyleVersion = "8.36.1"
+        pmdVersion = "6.28.0"
+        spotbugsVersion = "4.1.2"
+        codenarcVersion = "1.6"
+        spotbugs = true
+        codenarc = true
+        pmd = true
+        checkstyle = true
+        htmlReports = false
+
+        afterEvaluate {
+            val spotbugs = configurations.findByName("spotbugs")
+            if (spotbugs != null) {
+                dependencies {
+                    spotbugs("org.slf4j:slf4j-simple")
+                    spotbugs("com.github.spotbugs:spotbugs:4.1.2")
+                }
+            }
+//            tasks.withType(Checkstyle::class).configureEach {
+//                configDirectory.set(file("$gradleScriptDir/quality-configs/checkstyle"))
+//            }
+        }
     }
 
     val bintrayUpload by tasks.existing
